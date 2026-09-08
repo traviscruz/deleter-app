@@ -29,11 +29,11 @@ export function AppSplashScreen({ isReady, onFinish }: AppSplashScreenProps) {
 
   useEffect(() => {
     if (isReady) {
-      // Hold briefly, then pure simple fade out
+      // Hold for a comfortable duration (+1s longer), then smooth fade out
       const timer = setTimeout(() => {
         opacity.value = withTiming(
           0,
-          { duration: 350, easing: Easing.inOut(Easing.quad) },
+          { duration: 400, easing: Easing.inOut(Easing.quad) },
           (finished) => {
             'worklet';
             if (finished) {
@@ -41,7 +41,7 @@ export function AppSplashScreen({ isReady, onFinish }: AppSplashScreenProps) {
             }
           }
         );
-      }, 400);
+      }, 1400);
 
       return () => clearTimeout(timer);
     }

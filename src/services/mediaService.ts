@@ -101,7 +101,7 @@ export async function deleteAssets(assetIds: string[]): Promise<boolean> {
 }
 
 /**
- * Fetches a single asset by its ID (useful when chosen via the OS Photo Picker).
+ * Fetches a single asset by its ID or URI (useful when chosen via the OS Photo Picker).
  */
 export async function getAssetById(assetId: string): Promise<MediaAsset | null> {
   try {
@@ -123,3 +123,47 @@ export async function getAssetById(assetId: string): Promise<MediaAsset | null> 
     return null;
   }
 }
+
+/**
+ * Fetches assets starting from a specific starting asset and continuing forward/chronologically.
+ * Used when the user picks a starting point from the photo gallery grid.
+ */
+export async function fetchAssetsFrom(asset: MediaAsset): Promise<FetchAssetsResult> {
+  try {
+    // 1. Try querying with after: asset.id
+    const result = await MediaLibrary.getAssetsAsync({
+      first: 30,
+      after: asset.id,
+      mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
+      sortBy: [MediaLibrary.SortBy.creationTime],
+    });
+
+    const mappedSubsequent: MediaAsset[] = (result.assets || []).map((a) => ({
+      id: a.id,
+      uri: a.uri,
+      mediaType: a.mediaType,
+      duration: a.duration || 0,
+      creationTime: a.creationTime || Date.now(),
+      filename: a.filename,
+      width: a.width,
+      height: a.height,
+      albumId: a.albumId,
+    }));
+
+    // Put the selected starting asset first, followed by all subsequent photos
+    const combined = [asset, ...mappedSubsequent.filter((a) => a.id !== asset.id)];
+
+    return {
+      assets: combined,
+      endCursor: result.endCursor,
+      hasNextPage: result.hasNextPage,
+    };
+  } catch (error) {
+    console.warn('[MediaService] Error fetching assets from starting asset:', error);
+    return {
+      assets: [asset],
+      hasNextPage: false,
+    };
+  }
+}
+

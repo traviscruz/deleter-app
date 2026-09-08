@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { MediaAsset } from '@/types/media';
 import {
   fetchAssets,
+  fetchAssetsFrom,
   requestPermissions,
   deleteAssets,
   getAssetById,
@@ -198,47 +199,70 @@ export function useMediaQueue() {
     }
   }, [assets]);
 
-  // Jump to an asset picked from OS photo picker
+  // Jump to an asset picked from OS photo picker as the starting point
   const jumpToPickedAsset = useCallback(
     async (assetId?: string | null, uri?: string, filename?: string) => {
       if (!assetId && !uri && !filename) return;
 
-      // 1. Check if already loaded in local queue
-      if (assetId) {
-        const foundIndex = assets.findIndex((a) => a.id === assetId);
-        if (foundIndex !== -1) {
-          setCurrentIndex(foundIndex);
+      try {
+        setIsLoading(true);
+
+        // 1. If asset is already in current loaded array, slice queue to start from this photo
+        if (assetId) {
+          const foundIndex = assets.findIndex((a) => a.id === assetId);
+          if (foundIndex !== -1) {
+            setAssets((prev) => prev.slice(foundIndex));
+            setCurrentIndex(0);
+            return;
+          }
+        }
+
+        const fallbackIndex = assets.findIndex(
+          (a) => (filename && a.filename === filename) || (uri && a.uri === uri)
+        );
+        if (fallbackIndex !== -1) {
+          setAssets((prev) => prev.slice(fallbackIndex));
+          setCurrentIndex(0);
           return;
         }
-      }
 
-      // Fallback matching by uri or filename
-      const fallbackIndex = assets.findIndex(
-        (a) => (filename && a.filename === filename) || (uri && a.uri === uri)
-      );
-      if (fallbackIndex !== -1) {
-        setCurrentIndex(fallbackIndex);
-        return;
-      }
-
-      // 2. Fetch full metadata from MediaLibrary if not in current local page
-      if (assetId) {
-        try {
-          const fetched = await getAssetById(assetId);
-          if (fetched) {
-            setAssets((prev) => {
-              const updated = [...prev];
-              // Insert directly at the current active position
-              updated.splice(currentIndex, 0, fetched);
-              return updated;
-            });
-          }
-        } catch (err) {
-          console.warn('[useMediaQueue] Failed to load picked asset:', err);
+        // 2. Fetch metadata for the picked asset
+        let pickedAsset: MediaAsset | null = null;
+        if (assetId) {
+          pickedAsset = await getAssetById(assetId);
         }
+
+        if (!pickedAsset && uri) {
+          pickedAsset = {
+            id: assetId || uri,
+            uri,
+            mediaType:
+              uri.toLowerCase().endsWith('.mp4') || uri.toLowerCase().endsWith('.mov')
+                ? 'video'
+                : 'photo',
+            duration: 0,
+            creationTime: Date.now(),
+            filename: filename || 'Photo',
+            width: 0,
+            height: 0,
+          };
+        }
+
+        if (pickedAsset) {
+          // Fetch continuous page of assets starting from this picked asset
+          const result = await fetchAssetsFrom(pickedAsset);
+          setAssets(result.assets);
+          setCurrentIndex(0);
+          setCursor(result.endCursor);
+          setHasNextPage(result.hasNextPage);
+        }
+      } catch (err) {
+        console.warn('[useMediaQueue] Failed to jump to picked starting asset:', err);
+      } finally {
+        setIsLoading(false);
       }
     },
-    [assets, currentIndex]
+    [assets]
   );
 
   const nextAssets = assets.slice(currentIndex + 1, currentIndex + 4);
