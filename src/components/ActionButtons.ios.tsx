@@ -1,8 +1,8 @@
+import { NativeIconButton } from '@/components/ui/NativeIconButton';
+import { isGlassEffectAvailable } from '@/services/nativeUI';
+import * as Haptics from 'expo-haptics';
 import React from 'react';
 import { View } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { GlassContainer } from 'expo-glass-effect';
-import { NativeIconButton } from '@/components/ui/NativeIconButton';
 
 interface ActionButtonsProps {
   onKeep: () => void;
@@ -47,17 +47,8 @@ export function ActionButtons({
     }
   };
 
-  return (
-    <GlassContainer
-      spacing={20}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 24,
-      }}
-    >
+  const buttons = (
+    <>
       {/* Undo Button */}
       {onUndo && (
         <View style={{ marginRight: 24 }}>
@@ -90,8 +81,32 @@ export function ActionButtons({
         disabled={disabled}
         onPress={handlePressKeep}
       />
-    </GlassContainer>
+    </>
   );
+
+  const containerStyle = {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  };
+
+  // Guard: only use GlassContainer when the native module is compiled in (dev build).
+  // In Expo Go, expo-glass-effect's native view manager does not exist, causing an
+  // immediate crash if this module is imported at the top-level or rendered.
+  if (isGlassEffectAvailable()) {
+    // Safe lazy require — only runs when ExpoGlassEffect native module is confirmed present.
+    const { GlassContainer } = require('expo-glass-effect');
+    return (
+      <GlassContainer spacing={20} style={containerStyle}>
+        {buttons}
+      </GlassContainer>
+    );
+  }
+
+  return <View style={containerStyle}>{buttons}</View>;
 }
 
 export default ActionButtons;
+

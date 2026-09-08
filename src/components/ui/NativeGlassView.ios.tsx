@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, ViewProps, StyleSheet } from 'react-native';
-import { GlassView, isGlassEffectAPIAvailable } from 'expo-glass-effect';
 import { BlurView } from 'expo-blur';
+import { getGlassEffect } from '@/services/nativeUI';
+import React, { useMemo } from 'react';
+import { StyleSheet, View, ViewProps } from 'react-native';
 
 export interface NativeGlassViewProps extends ViewProps {
   glassEffectStyle?: 'regular' | 'clear';
@@ -18,27 +18,12 @@ export function NativeGlassView({
   children,
   ...props
 }: NativeGlassViewProps) {
-  const [hasGlass, setHasGlass] = useState<boolean>(() => {
-    try {
-      return typeof isGlassEffectAPIAvailable === 'function' && isGlassEffectAPIAvailable();
-    } catch {
-      return false;
-    }
-  });
+  // getGlassEffect() returns null in Expo Go (guarded by IS_EXPO_GO) and on non-iOS 26 devices.
+  const glassEffect = useMemo(() => getGlassEffect(), []);
 
-  useEffect(() => {
-    try {
-      if (typeof isGlassEffectAPIAvailable === 'function') {
-        const available = isGlassEffectAPIAvailable();
-        setHasGlass(available);
-      }
-    } catch {
-      setHasGlass(false);
-    }
-  }, []);
-
-  if (hasGlass) {
-    // Strip conflicting backgroundColor / shadows so native Liquid Glass lens renders cleanly without double backing
+  if (glassEffect && glassEffect.GlassView) {
+    const { GlassView } = glassEffect;
+    // Strip conflicting backgroundColor / shadows so native Liquid Glass lens renders cleanly
     const flattened = StyleSheet.flatten(style) || {};
     const {
       backgroundColor: _bg,
@@ -63,7 +48,7 @@ export function NativeGlassView({
     );
   }
 
-  // Graceful fallback for iOS environments without native Liquid Glass API
+  // Fallback: BlurView for Expo Go and non-iOS 26 devices
   return (
     <View
       style={[

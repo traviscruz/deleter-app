@@ -1,6 +1,9 @@
-import React from 'react';
-import { View, Platform, StyleProp, ViewStyle, ViewProps } from 'react-native';
-import { GlassView, GlassStyle } from 'expo-glass-effect';
+import { BlurView } from 'expo-blur';
+import { getGlassEffect } from '@/services/nativeUI';
+import React, { useMemo } from 'react';
+import { Platform, StyleProp, StyleSheet, View, ViewProps, ViewStyle } from 'react-native';
+
+export type GlassStyle = 'regular' | 'clear';
 
 export interface NativeGlassViewProps extends ViewProps {
   glassEffectStyle?: GlassStyle;
@@ -12,10 +15,9 @@ export interface NativeGlassViewProps extends ViewProps {
 
 /**
  * Real Native OS Surface Component:
- * - iOS: Renders native Liquid Glass material via `expo-glass-effect` (automatically adapts to iOS version).
- * - Android: Renders solid Material You surface (no glass effect exists on Android).
- *
- * Strictly branches on Platform.OS, never on OS version numbers.
+ * - iOS: Renders native Liquid Glass via `expo-glass-effect` when available (dev build, iOS 26+),
+ *        or falls back to native BlurView in Expo Go / older iOS.
+ * - Android: Renders solid Material You surface.
  */
 export function NativeGlassView({
   glassEffectStyle = 'regular',
@@ -25,17 +27,40 @@ export function NativeGlassView({
   children,
   ...props
 }: NativeGlassViewProps) {
+  // getGlassEffect() is null in Expo Go (IS_EXPO_GO guard) and on non-iOS 26 devices.
+  const glassEffect = useMemo(() => (Platform.OS === 'ios' ? getGlassEffect() : null), []);
+
   if (Platform.OS === 'ios') {
+    if (glassEffect && glassEffect.GlassView) {
+      const { GlassView } = glassEffect;
+      return (
+        <GlassView
+          glassEffectStyle={glassEffectStyle}
+          tintColor={tintColor}
+          isInteractive={isInteractive}
+          style={style}
+          {...props}
+        >
+          {children}
+        </GlassView>
+      );
+    }
+
+    // Expo Go / non-iOS 26 fallback: BlurView
     return (
-      <GlassView
-        glassEffectStyle={glassEffectStyle}
-        tintColor={tintColor}
-        isInteractive={isInteractive}
-        style={style}
+      <View
+        style={[
+          {
+            overflow: 'hidden',
+            backgroundColor: 'rgba(28, 28, 30, 0.75)',
+          },
+          style,
+        ]}
         {...props}
       >
+        <BlurView intensity={85} tint="systemMaterialDark" style={StyleSheet.absoluteFill} />
         {children}
-      </GlassView>
+      </View>
     );
   }
 
