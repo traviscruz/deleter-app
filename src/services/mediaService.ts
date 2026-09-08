@@ -1,5 +1,5 @@
-import * as MediaLibrary from 'expo-media-library';
-import { PermissionStatus } from 'expo-media-library';
+import * as MediaLibrary from 'expo-media-library/legacy';
+import { PermissionStatus } from 'expo-media-library/legacy';
 import { MediaAsset } from '@/types/media';
 
 export { PermissionStatus };
