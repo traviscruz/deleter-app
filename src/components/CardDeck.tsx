@@ -1,4 +1,12 @@
-import React, { useCallback, useImperativeHandle, forwardRef, useLayoutEffect, useEffect } from 'react';
+import React, {
+  useCallback,
+  useImperativeHandle,
+  forwardRef,
+  useRef,
+  memo,
+  useLayoutEffect,
+  useEffect,
+} from 'react';
 import { View, Text, StyleSheet, Dimensions, Platform } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -10,6 +18,7 @@ import Animated, {
   runOnJS,
   interpolate,
   Extrapolation,
+  SharedValue,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -30,311 +39,407 @@ interface CardDeckProps {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const SWIPE_THRESHOLD = 90;
-const FLYOUT_DURATION = 220;
-const SWIPE_EASING = Easing.bezier(0.2, 0.9, 0.42, 1);
+const SWIPE_THRESHOLD = 95;
+const FLYOUT_DURATION = 230;
+const FLYOUT_EASING = Easing.out(Easing.cubic);
+
+interface DeckCardItemRef {
+  flyOut: (direction: 'left' | 'right') => void;
+}
+
+interface DeckCardItemProps {
+  asset: MediaAsset;
+  index: number; // 0 = top card, 1 = 2nd card, 2 = 3rd card
+  dragProgress: SharedValue<number>;
+  isDeckLocked: SharedValue<boolean>;
+  onSwipeComplete: (id: string, direction: 'left' | 'right') => void;
+  isIOS: boolean;
+}
+
+const DeckCardItem = memo(
+  forwardRef<DeckCardItemRef, DeckCardItemProps>(function DeckCardItem(
+    { asset, index, dragProgress, isDeckLocked, onSwipeComplete, isIOS },
+    ref
+  ) {
+    const isTop = index === 0;
+    const translateX = useSharedValue(0);
+    const translateY = useSharedValue(0);
+    const hasCrossedThreshold = useSharedValue(false);
+
+    const triggerThresholdHaptic = useCallback(() => {
+      Haptics.impactAsync(
+        isIOS ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium
+      );
+    }, [isIOS]);
+
+    const performFlyOut = useCallback(
+      (direction: 'left' | 'right', initialVelocityX = 0, initialVelocityY = 0) => {
+        'worklet';
+        if (isDeckLocked.value) return;
+        isDeckLocked.value = true;
+
+        const isRight = direction === 'right';
+        const targetX = isRight ? SCREEN_WIDTH * 1.55 : -SCREEN_WIDTH * 1.55;
+        const targetY = translateY.value + (initialVelocityY ? initialVelocityY * 0.12 : -20);
+
+        translateX.value = withTiming(
+          targetX,
+          {
+            duration: FLYOUT_DURATION,
+            easing: FLYOUT_EASING,
+          },
+          () => {
+            'worklet';
+            runOnJS(onSwipeComplete)(asset.id, direction);
+          }
+        );
+
+        translateY.value = withTiming(targetY, {
+          duration: FLYOUT_DURATION,
+          easing: FLYOUT_EASING,
+        });
+
+        dragProgress.value = withTiming(1, {
+          duration: FLYOUT_DURATION,
+          easing: FLYOUT_EASING,
+        });
+      },
+      [asset.id, dragProgress, isDeckLocked, onSwipeComplete, translateX, translateY]
+    );
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        flyOut: (direction: 'left' | 'right') => {
+          performFlyOut(direction);
+        },
+      }),
+      [performFlyOut]
+    );
+
+    const panGesture = Gesture.Pan()
+      .enabled(isTop)
+      .onBegin(() => {
+        'worklet';
+        if (isDeckLocked.value || !isTop) return;
+      })
+      .onUpdate((event) => {
+        'worklet';
+        if (isDeckLocked.value || !isTop) return;
+
+        translateX.value = event.translationX;
+        translateY.value = event.translationY * 0.38;
+
+        const progress = Math.min(Math.abs(event.translationX) / (SCREEN_WIDTH * 0.72), 1);
+        dragProgress.value = progress;
+
+        const isPast = Math.abs(event.translationX) >= SWIPE_THRESHOLD;
+        if (isPast && !hasCrossedThreshold.value) {
+          hasCrossedThreshold.value = true;
+          runOnJS(triggerThresholdHaptic)();
+        } else if (!isPast && hasCrossedThreshold.value) {
+          hasCrossedThreshold.value = false;
+        }
+      })
+      .onEnd((event) => {
+        'worklet';
+        if (isDeckLocked.value || !isTop) return;
+
+        const isQuickFlickRight = event.velocityX > 450;
+        const isQuickFlickLeft = event.velocityX < -450;
+
+        if (translateX.value > SWIPE_THRESHOLD || isQuickFlickRight) {
+          performFlyOut('right', event.velocityX, event.velocityY);
+        } else if (translateX.value < -SWIPE_THRESHOLD || isQuickFlickLeft) {
+          performFlyOut('left', event.velocityX, event.velocityY);
+        } else {
+          // Rebound back with natural spring
+          translateX.value = withSpring(0, {
+            velocity: event.velocityX,
+            damping: 20,
+            stiffness: 220,
+            mass: 0.8,
+          });
+          translateY.value = withSpring(0, {
+            velocity: event.velocityY,
+            damping: 20,
+            stiffness: 220,
+            mass: 0.8,
+          });
+          dragProgress.value = withSpring(0, {
+            damping: 20,
+            stiffness: 220,
+            mass: 0.8,
+          });
+        }
+        hasCrossedThreshold.value = false;
+      });
+
+    // Unified Card Stacking & Physical Depth Style
+    const cardAnimatedStyle = useAnimatedStyle(() => {
+      if (index === 0) {
+        // TOP ACTIVE CARD
+        const rotation = interpolate(
+          translateX.value,
+          [-SCREEN_WIDTH * 0.85, 0, SCREEN_WIDTH * 0.85],
+          [-13, 0, 13],
+          Extrapolation.CLAMP
+        );
+
+        const shadowOpacity = interpolate(
+          dragProgress.value,
+          [0, 1],
+          [0.5, 0.85],
+          Extrapolation.CLAMP
+        );
+
+        const shadowRadius = interpolate(
+          dragProgress.value,
+          [0, 1],
+          [20, 32],
+          Extrapolation.CLAMP
+        );
+
+        const shadowHeight = interpolate(
+          dragProgress.value,
+          [0, 1],
+          [10, 22],
+          Extrapolation.CLAMP
+        );
+
+        return {
+          zIndex: 10,
+          shadowColor: '#000000',
+          shadowOpacity,
+          shadowRadius,
+          shadowOffset: { width: 0, height: shadowHeight },
+          elevation: 12,
+          transform: [
+            { translateX: translateX.value },
+            { translateY: translateY.value },
+            { rotate: `${rotation}deg` },
+            { scale: 1.0 },
+          ],
+        };
+      } else if (index === 1) {
+        // 2ND CARD (Smoothly scales from 0.95 to 1.0 with ZERO frame skip)
+        const scale = interpolate(dragProgress.value, [0, 1], [0.95, 1.0], Extrapolation.CLAMP);
+        const translateYVal = interpolate(dragProgress.value, [0, 1], [14, 0], Extrapolation.CLAMP);
+
+        return {
+          zIndex: 2,
+          shadowColor: '#000000',
+          shadowOpacity: 0.4,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+          transform: [
+            { translateX: 0 },
+            { translateY: translateYVal },
+            { scale },
+          ],
+        };
+      } else {
+        // 3RD CARD (Smoothly scales from 0.90 to 0.95)
+        const scale = interpolate(dragProgress.value, [0, 1], [0.90, 0.95], Extrapolation.CLAMP);
+        const translateYVal = interpolate(dragProgress.value, [0, 1], [28, 14], Extrapolation.CLAMP);
+
+        return {
+          zIndex: 1,
+          shadowColor: '#000000',
+          shadowOpacity: 0.3,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 4,
+          transform: [
+            { translateX: 0 },
+            { translateY: translateYVal },
+            { scale },
+          ],
+        };
+      }
+    });
+
+    // Dark Depth Overlay (Ambient Occlusion)
+    const scrimAnimatedStyle = useAnimatedStyle(() => {
+      if (index === 0) {
+        return { opacity: 0 };
+      } else if (index === 1) {
+        const opacity = interpolate(dragProgress.value, [0, 1], [0.22, 0.0], Extrapolation.CLAMP);
+        return { opacity };
+      } else {
+        const opacity = interpolate(dragProgress.value, [0, 1], [0.44, 0.22], Extrapolation.CLAMP);
+        return { opacity };
+      }
+    });
+
+    // Centered Minimalist "KEEP" Icon
+    const keepIndicatorAnimatedStyle = useAnimatedStyle(() => {
+      if (index !== 0) return { opacity: 0 };
+      const opacity = interpolate(
+        translateX.value,
+        [15, SWIPE_THRESHOLD * 0.65],
+        [0, 1],
+        Extrapolation.CLAMP
+      );
+      const scale = interpolate(
+        translateX.value,
+        [15, SWIPE_THRESHOLD],
+        [0.8, 1.05],
+        Extrapolation.CLAMP
+      );
+      return {
+        opacity,
+        transform: [{ scale }],
+      };
+    });
+
+    // Centered Minimalist "DELETE" Icon
+    const deleteIndicatorAnimatedStyle = useAnimatedStyle(() => {
+      if (index !== 0) return { opacity: 0 };
+      const opacity = interpolate(
+        translateX.value,
+        [-15, -SWIPE_THRESHOLD * 0.65],
+        [0, 1],
+        Extrapolation.CLAMP
+      );
+      const scale = interpolate(
+        translateX.value,
+        [-15, -SWIPE_THRESHOLD],
+        [0.8, 1.05],
+        Extrapolation.CLAMP
+      );
+      return {
+        opacity,
+        transform: [{ scale }],
+      };
+    });
+
+    return (
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[styles.cardLayer, cardAnimatedStyle]}>
+          <SwipeCard asset={asset} isInteractive={isTop} />
+
+          {/* Ambient occlusion depth scrim: Permanently mounted to guarantee zero native subview churn */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: '#000000',
+                borderRadius: isIOS ? 28 : 22,
+              },
+              scrimAnimatedStyle,
+            ]}
+          />
+
+          {/* Centered Minimalist Check Badge */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.centerIndicator, styles.indicatorKeep, keepIndicatorAnimatedStyle]}
+          >
+            <PlatformIcon name="check" size={24} color="#30D158" />
+          </Animated.View>
+
+          {/* Centered Minimalist X Badge */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.centerIndicator, styles.indicatorDelete, deleteIndicatorAnimatedStyle]}
+          >
+            <PlatformIcon name="close" size={22} color="#FF453A" />
+          </Animated.View>
+        </Animated.View>
+      </GestureDetector>
+    );
+  })
+);
 
 export const CardDeck = forwardRef<CardDeckRef, CardDeckProps>(function CardDeck(
   { currentAsset, nextAssets, onSwipeLeft, onSwipeRight },
   ref
 ) {
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const isSwiping = useSharedValue(false);
-  const hasCrossedThreshold = useSharedValue(false);
+  const dragProgress = useSharedValue(0);
+  const isDeckLocked = useSharedValue(false);
+  const topCardRef = useRef<DeckCardItemRef>(null);
 
   const isIOS = Platform.OS === 'ios';
 
-  // Immediate reset when the active card changes
+  // Synchronously reset dragProgress when the active card changes during React's commit phase.
+  // This guarantees that the incoming card is already evaluated as Top Card (scale 1.0)
+  // before dragProgress resets, completely eliminating any frame skips or scale snapping!
   useLayoutEffect(() => {
-    translateX.value = 0;
-    translateY.value = 0;
-    isSwiping.value = false;
-    hasCrossedThreshold.value = false;
-  }, [currentAsset.id, translateX, translateY, isSwiping, hasCrossedThreshold]);
+    dragProgress.value = 0;
+    isDeckLocked.value = false;
+  }, [currentAsset.id, dragProgress, isDeckLocked]);
 
-  // Pre-decode upcoming photos into memory cache so there is 0ms frame lag/flash
+  // Ahead-of-time image cache decoding
   useEffect(() => {
-    if (nextAssets && nextAssets.length > 0) {
-      const urls = nextAssets
-        .filter((a) => a.mediaType !== 'video' && a.uri)
-        .map((a) => a.uri);
-      if (urls.length > 0) {
-        Image.prefetch(urls);
-      }
+    const list = [currentAsset, ...(nextAssets || [])].filter(Boolean);
+    const urls = list
+      .filter((a) => a.mediaType !== 'video' && a.uri)
+      .map((a) => a.uri);
+    if (urls.length > 0) {
+      Image.prefetch(urls);
     }
-  }, [nextAssets]);
+  }, [currentAsset, nextAssets]);
 
-  const triggerThresholdHaptic = useCallback(() => {
-    const feedbackStyle = isIOS
-      ? Haptics.ImpactFeedbackStyle.Light
-      : Haptics.ImpactFeedbackStyle.Medium;
-    Haptics.impactAsync(feedbackStyle);
-  }, [isIOS]);
-
-  const triggerSwipeLeft = useCallback(() => {
-    if (isSwiping.value) return;
-    isSwiping.value = true;
-    const currentId = currentAsset.id;
-    translateX.value = withTiming(
-      -SCREEN_WIDTH * 1.3,
-      {
-        duration: FLYOUT_DURATION,
-        easing: SWIPE_EASING,
-      },
-      () => {
-        'worklet';
-        runOnJS(onSwipeLeft)(currentId);
+  const handleSwipeComplete = useCallback(
+    (assetId: string, direction: 'left' | 'right') => {
+      // Advance parent queue.
+      // NOTE: We deliberately do NOT reset dragProgress here.
+      // Leaving dragProgress at 1 keeps the upcoming card at scale 1.0 continuously
+      // until React commits the new top card, at which point useLayoutEffect resets it seamlessly!
+      if (direction === 'left') {
+        onSwipeLeft(assetId);
+      } else {
+        onSwipeRight(assetId);
       }
-    );
-  }, [currentAsset.id, onSwipeLeft, translateX, isSwiping]);
-
-  const triggerSwipeRight = useCallback(() => {
-    if (isSwiping.value) return;
-    isSwiping.value = true;
-    const currentId = currentAsset.id;
-    translateX.value = withTiming(
-      SCREEN_WIDTH * 1.3,
-      {
-        duration: FLYOUT_DURATION,
-        easing: SWIPE_EASING,
-      },
-      () => {
-        'worklet';
-        runOnJS(onSwipeRight)(currentId);
-      }
-    );
-  }, [currentAsset.id, onSwipeRight, translateX, isSwiping]);
+    },
+    [onSwipeLeft, onSwipeRight]
+  );
 
   useImperativeHandle(ref, () => ({
-    swipeLeft: triggerSwipeLeft,
-    swipeRight: triggerSwipeRight,
+    swipeLeft: () => {
+      if (topCardRef.current && !isDeckLocked.value) {
+        topCardRef.current.flyOut('left');
+      }
+    },
+    swipeRight: () => {
+      if (topCardRef.current && !isDeckLocked.value) {
+        topCardRef.current.flyOut('right');
+      }
+    },
   }));
 
-  const panGesture = Gesture.Pan()
-    .onBegin(() => {
-      'worklet';
-      if (isSwiping.value) return;
-    })
-    .onUpdate((event) => {
-      'worklet';
-      if (isSwiping.value) return;
-      translateX.value = event.translationX;
-      translateY.value = event.translationY * 0.2;
+  // Build the list of cards: index 0 (top), index 1 (2nd), index 2 (3rd)
+  const cardItems: { asset: MediaAsset; index: number }[] = [];
+  if (currentAsset) {
+    cardItems.push({ asset: currentAsset, index: 0 });
+  }
+  if (nextAssets && nextAssets[0]) {
+    cardItems.push({ asset: nextAssets[0], index: 1 });
+  }
+  if (nextAssets && nextAssets[1]) {
+    cardItems.push({ asset: nextAssets[1], index: 2 });
+  }
 
-      const isPast = Math.abs(event.translationX) >= SWIPE_THRESHOLD;
-      if (isPast && !hasCrossedThreshold.value) {
-        hasCrossedThreshold.value = true;
-        runOnJS(triggerThresholdHaptic)();
-      } else if (!isPast && hasCrossedThreshold.value) {
-        hasCrossedThreshold.value = false;
-      }
-    })
-    .onEnd((event) => {
-      'worklet';
-      if (isSwiping.value) return;
-
-      const isQuickFlickRight = event.velocityX > 450;
-      const isQuickFlickLeft = event.velocityX < -450;
-
-      if (translateX.value > SWIPE_THRESHOLD || isQuickFlickRight) {
-        isSwiping.value = true;
-        const currentId = currentAsset.id;
-        translateX.value = withTiming(
-          SCREEN_WIDTH * 1.3,
-          {
-            duration: FLYOUT_DURATION,
-            easing: SWIPE_EASING,
-          },
-          () => {
-            'worklet';
-            runOnJS(onSwipeRight)(currentId);
-          }
-        );
-      } else if (translateX.value < -SWIPE_THRESHOLD || isQuickFlickLeft) {
-        isSwiping.value = true;
-        const currentId = currentAsset.id;
-        translateX.value = withTiming(
-          -SCREEN_WIDTH * 1.3,
-          {
-            duration: FLYOUT_DURATION,
-            easing: SWIPE_EASING,
-          },
-          () => {
-            'worklet';
-            runOnJS(onSwipeLeft)(currentId);
-          }
-        );
-      } else {
-        translateX.value = withSpring(0, {
-          velocity: event.velocityX,
-          damping: 20,
-          stiffness: 180,
-          mass: 0.8,
-        });
-        translateY.value = withSpring(0, {
-          velocity: event.velocityY,
-          damping: 20,
-          stiffness: 180,
-          mass: 0.8,
-        });
-      }
-      hasCrossedThreshold.value = false;
-    });
-
-  // Top Card Animated Style
-  const topCardAnimatedStyle = useAnimatedStyle(() => {
-    const rotation = interpolate(
-      translateX.value,
-      [-SCREEN_WIDTH * 0.9, 0, SCREEN_WIDTH * 0.9],
-      [-10, 0, 10],
-      Extrapolation.CLAMP
-    );
-
-    const shadowOpacity = interpolate(
-      Math.abs(translateX.value),
-      [0, SWIPE_THRESHOLD],
-      [0.55, 0.85],
-      Extrapolation.CLAMP
-    );
-
-    const shadowRadius = interpolate(
-      Math.abs(translateX.value),
-      [0, SWIPE_THRESHOLD],
-      [24, 36],
-      Extrapolation.CLAMP
-    );
-
-    return {
-      shadowOpacity,
-      shadowRadius,
-      transform: [
-        { translateX: translateX.value },
-        { translateY: translateY.value },
-        { rotate: `${rotation}deg` },
-      ],
-    };
-  });
-
-  // 2nd Card Animated Style (Smooth parallel scale & translate as top card drags)
-  const secondCardAnimatedStyle = useAnimatedStyle(() => {
-    const progress = Math.min(Math.abs(translateX.value) / (SCREEN_WIDTH * 0.8), 1);
-    const scale = interpolate(progress, [0, 1], [0.94, 1.0], Extrapolation.CLAMP);
-    const translateYVal = interpolate(progress, [0, 1], [12, 0], Extrapolation.CLAMP);
-    const opacity = interpolate(progress, [0, 1], [0.8, 1.0], Extrapolation.CLAMP);
-
-    return {
-      opacity,
-      transform: [{ scale }, { translateY: translateYVal }],
-    };
-  });
-
-  // 3rd Card Animated Style (Smooth parallel rise)
-  const thirdCardAnimatedStyle = useAnimatedStyle(() => {
-    const progress = Math.min(Math.abs(translateX.value) / (SCREEN_WIDTH * 0.8), 1);
-    const scale = interpolate(progress, [0, 1], [0.88, 0.94], Extrapolation.CLAMP);
-    const translateYVal = interpolate(progress, [0, 1], [24, 12], Extrapolation.CLAMP);
-    const opacity = interpolate(progress, [0, 1], [0.5, 0.8], Extrapolation.CLAMP);
-
-    return {
-      opacity,
-      transform: [{ scale }, { translateY: translateYVal }],
-    };
-  });
-
-  // Swipe Indicators Animated Styles
-  const keepIndicatorAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      translateX.value,
-      [15, SWIPE_THRESHOLD * 0.55],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    const scale = interpolate(
-      translateX.value,
-      [15, SWIPE_THRESHOLD],
-      [0.85, 1.05],
-      Extrapolation.CLAMP
-    );
-    return {
-      opacity,
-      transform: [{ scale }],
-    };
-  });
-
-  const deleteIndicatorAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      translateX.value,
-      [-15, -SWIPE_THRESHOLD * 0.55],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    const scale = interpolate(
-      translateX.value,
-      [-15, -SWIPE_THRESHOLD],
-      [0.85, 1.05],
-      Extrapolation.CLAMP
-    );
-    return {
-      opacity,
-      transform: [{ scale }],
-    };
-  });
+  // Render from deepest (index 2) to top (index 0) so zIndex stacking is natural
+  const renderedCards = cardItems.slice().reverse();
 
   return (
     <View style={styles.deckContainer}>
-      {/* 3rd Card (deepest in stack) */}
-      {nextAssets && nextAssets[1] && (
-        <Animated.View
-          style={[styles.cardLayer, { zIndex: 1 }, thirdCardAnimatedStyle]}
-        >
-          <SwipeCard asset={nextAssets[1]} />
-        </Animated.View>
-      )}
-
-      {/* 2nd Card (middle in stack, smoothly scales up in parallel) */}
-      {nextAssets && nextAssets[0] && (
-        <Animated.View
-          style={[styles.cardLayer, { zIndex: 2 }, secondCardAnimatedStyle]}
-        >
-          <SwipeCard asset={nextAssets[0]} />
-        </Animated.View>
-      )}
-
-      {/* Top Active Card */}
-      <GestureDetector gesture={panGesture}>
-        <Animated.View
-          style={[styles.cardLayer, { zIndex: 10 }, topCardAnimatedStyle]}
-        >
-          <SwipeCard asset={currentAsset} isInteractive={true} />
-
-          {/* Minimalist KEEP Swipe Indicator */}
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.centerIndicator, keepIndicatorAnimatedStyle]}
-          >
-            <View style={[styles.indicatorPill, { borderColor: isIOS ? 'rgba(48, 209, 88, 0.4)' : '#2E6A44', backgroundColor: isIOS ? 'rgba(0, 0, 0, 0.7)' : '#1D1B20' }]}>
-              <PlatformIcon name="check" size={20} color={isIOS ? '#30D158' : '#6CDB94'} style={{ marginRight: 6 }} />
-              <Text style={{ color: isIOS ? '#30D158' : '#6CDB94', fontSize: 14, fontWeight: '700', letterSpacing: 2 }}>
-                KEEP
-              </Text>
-            </View>
-          </Animated.View>
-
-          {/* Minimalist DELETE Swipe Indicator */}
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.centerIndicator, deleteIndicatorAnimatedStyle]}
-          >
-            <View style={[styles.indicatorPill, { borderColor: isIOS ? 'rgba(255, 69, 58, 0.4)' : '#8C1D18', backgroundColor: isIOS ? 'rgba(0, 0, 0, 0.7)' : '#1D1B20' }]}>
-              <PlatformIcon name="close" size={20} color={isIOS ? '#FF453A' : '#FFB4AB'} style={{ marginRight: 6 }} />
-              <Text style={{ color: isIOS ? '#FF453A' : '#FFB4AB', fontSize: 14, fontWeight: '700', letterSpacing: 2 }}>
-                DELETE
-              </Text>
-            </View>
-          </Animated.View>
-        </Animated.View>
-      </GestureDetector>
+      {renderedCards.map((item) => (
+        <DeckCardItem
+          key={`card-stable-${item.asset.id}`}
+          ref={item.index === 0 ? topCardRef : undefined}
+          asset={item.asset}
+          index={item.index}
+          dragProgress={dragProgress}
+          isDeckLocked={isDeckLocked}
+          onSwipeComplete={handleSwipeComplete}
+          isIOS={isIOS}
+        />
+      ))}
     </View>
   );
 });
@@ -358,18 +463,28 @@ const styles = StyleSheet.create({
   },
   centerIndicator: {
     position: 'absolute',
-    top: '45%',
     alignSelf: 'center',
-    zIndex: 35,
-  },
-  indicatorPill: {
-    borderRadius: 999,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    flexDirection: 'row',
+    top: '50%',
+    marginTop: -23,
+    zIndex: 40,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    backgroundColor: 'rgba(10, 10, 12, 0.85)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  indicatorKeep: {
+    borderColor: 'rgba(48, 209, 88, 0.8)',
+  },
+  indicatorDelete: {
+    borderColor: 'rgba(255, 69, 58, 0.8)',
   },
 });
 

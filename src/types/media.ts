@@ -1,4 +1,4 @@
-import type { Asset, MediaTypeValue } from 'expo-media-library/legacy';
+import type { Asset, MediaTypeValue } from 'expo-media-library';
 
 export interface MediaAsset {
   id: string;

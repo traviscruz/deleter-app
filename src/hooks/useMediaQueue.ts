@@ -4,6 +4,7 @@ import {
   fetchAssets,
   requestPermissions,
   deleteAssets,
+  getAssetById,
 } from '@/services/mediaService';
 
 export interface ActionHistoryItem {
@@ -197,7 +198,50 @@ export function useMediaQueue() {
     }
   }, [assets]);
 
-  const nextAssets = assets.slice(currentIndex + 1, currentIndex + 3);
+  // Jump to an asset picked from OS photo picker
+  const jumpToPickedAsset = useCallback(
+    async (assetId?: string | null, uri?: string, filename?: string) => {
+      if (!assetId && !uri && !filename) return;
+
+      // 1. Check if already loaded in local queue
+      if (assetId) {
+        const foundIndex = assets.findIndex((a) => a.id === assetId);
+        if (foundIndex !== -1) {
+          setCurrentIndex(foundIndex);
+          return;
+        }
+      }
+
+      // Fallback matching by uri or filename
+      const fallbackIndex = assets.findIndex(
+        (a) => (filename && a.filename === filename) || (uri && a.uri === uri)
+      );
+      if (fallbackIndex !== -1) {
+        setCurrentIndex(fallbackIndex);
+        return;
+      }
+
+      // 2. Fetch full metadata from MediaLibrary if not in current local page
+      if (assetId) {
+        try {
+          const fetched = await getAssetById(assetId);
+          if (fetched) {
+            setAssets((prev) => {
+              const updated = [...prev];
+              // Insert directly at the current active position
+              updated.splice(currentIndex, 0, fetched);
+              return updated;
+            });
+          }
+        } catch (err) {
+          console.warn('[useMediaQueue] Failed to load picked asset:', err);
+        }
+      }
+    },
+    [assets, currentIndex]
+  );
+
+  const nextAssets = assets.slice(currentIndex + 1, currentIndex + 4);
   const trashAssets = assets.filter((item) => pendingDelete.includes(item.id));
 
   return {
@@ -223,6 +267,7 @@ export function useMediaQueue() {
     unmarkAllDelete,
     jumpToIndex,
     jumpToAssetId,
+    jumpToPickedAsset,
     fetchNextPage,
     commitDeletes,
     refresh: initQueue,

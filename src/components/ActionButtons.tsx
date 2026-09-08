@@ -1,9 +1,9 @@
-import React from 'react';
-import { View, Platform } from 'react-native';
-import * as Haptics from 'expo-haptics';
 import { NativeGlassView } from '@/components/ui/NativeGlassView';
-import { PlatformPressable } from '@/components/ui/PlatformPressable';
 import { PlatformIcon } from '@/components/ui/PlatformIcon';
+import { PlatformPressable } from '@/components/ui/PlatformPressable';
+import * as Haptics from 'expo-haptics';
+import React from 'react';
+import { Platform, View } from 'react-native';
 
 interface ActionButtonsProps {
   onKeep: () => void;

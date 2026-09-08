@@ -39,7 +39,6 @@ export const SwipeCard = memo(function SwipeCard({ asset, isInteractive = false 
             source={{ uri: asset.uri }}
             style={StyleSheet.absoluteFill}
             contentFit="contain"
-            recyclingKey={asset.id}
             priority="high"
             cachePolicy="memory-disk"
             transition={0}

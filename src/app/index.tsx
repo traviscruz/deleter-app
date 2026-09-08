@@ -1,31 +1,32 @@
+import { ActionButtons } from '@/components/ActionButtons';
+import { AppSplashScreen } from '@/components/AppSplashScreen';
+import { CardDeck, CardDeckRef } from '@/components/CardDeck';
+import { DeleteConfirmSheet } from '@/components/DeleteConfirmSheet';
+import { NativeButton } from '@/components/ui/NativeButton';
+import { NativeIconButton } from '@/components/ui/NativeIconButton';
+import { NativeGlassView } from '@/components/ui/NativeGlassView';
+import { PlatformIcon } from '@/components/ui/PlatformIcon';
+import { PlatformPressable } from '@/components/ui/PlatformPressable';
+import { useMediaQueue } from '@/hooks/useMediaQueue';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as Linking from 'expo-linking';
 import React, { useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  ActivityIndicator,
-  Platform,
   Alert,
+  ActionSheetIOS,
+  Platform,
   StatusBar,
   StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMediaQueue } from '@/hooks/useMediaQueue';
-import { CardDeck, CardDeckRef } from '@/components/CardDeck';
-import { ActionButtons } from '@/components/ActionButtons';
-import { DeleteConfirmSheet } from '@/components/DeleteConfirmSheet';
-import { GalleryPickerModal } from '@/components/GalleryPickerModal';
-import { AppSplashScreen } from '@/components/AppSplashScreen';
-import { NativeGlassView } from '@/components/ui/NativeGlassView';
-import { NativeButton } from '@/components/ui/NativeButton';
-import { PlatformPressable } from '@/components/ui/PlatformPressable';
-import { PlatformIcon } from '@/components/ui/PlatformIcon';
 
 export default function SwipeScreen() {
   const deckRef = useRef<CardDeckRef>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [splashVisible, setSplashVisible] = useState(true);
 
   const isIOS = Platform.OS === 'ios';
@@ -51,6 +52,7 @@ export default function SwipeScreen() {
     unmarkDelete,
     unmarkAllDelete,
     jumpToAssetId,
+    jumpToPickedAsset,
     fetchNextPage,
     commitDeletes,
     requestPermissions,
@@ -86,9 +88,74 @@ export default function SwipeScreen() {
     }
   };
 
-  const handleOpenDeleteConfirmation = () => {
+  /**
+   * Native OS Delete Confirmation:
+   * Uses ActionSheetIOS on iOS (the native iPhone photo deletion sheet)
+   * and Alert.alert on Android.
+   */
+  const handleTriggerDeleteConfirmation = () => {
     if (pendingDelete.length === 0) return;
-    setIsReviewOpen(true);
+
+    const count = pendingDelete.length;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: `Delete ${count} ${count === 1 ? 'Item' : 'Items'}`,
+          message: 'These items will be permanently removed from your photo library.',
+          options: ['Cancel', `Delete ${count} ${count === 1 ? 'Item' : 'Items'}`, 'Review Trash'],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            handleConfirmDeletion();
+          } else if (buttonIndex === 2) {
+            setIsReviewOpen(true);
+          }
+        }
+      );
+    } else {
+      Alert.alert(
+        `Delete ${count} ${count === 1 ? 'Item' : 'Items'}?`,
+        'These items will be permanently removed from your photo library.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Review Items',
+            style: 'default',
+            onPress: () => setIsReviewOpen(true),
+          },
+          {
+            text: `Delete (${count})`,
+            style: 'destructive',
+            onPress: handleConfirmDeletion,
+          },
+        ]
+      );
+    }
+  };
+
+  const handleOpenOSPhotoPicker = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsMultipleSelection: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const picked = result.assets[0];
+        await jumpToPickedAsset(picked.assetId, picked.uri, picked.fileName ?? undefined);
+      }
+    } catch (error) {
+      console.warn('[SwipeScreen] Failed to launch OS Photo Picker:', error);
+    }
   };
 
   const handleOpenSettings = async () => {
@@ -207,60 +274,22 @@ export default function SwipeScreen() {
             minHeight: 52,
           }}
         >
-          {/* iOS Left Item: Undo & Gallery Grid Buttons */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', zIndex: 10 }}>
-            <PlatformPressable
-              onPress={undo}
+          {/* iOS Left Item: Standalone Native Liquid Glass Controls */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 10 }}>
+            <NativeIconButton
+              action="undo"
+              size={44}
+              iconSize={20}
               disabled={!canUndo}
-              activeOpacity={0.7}
-              style={{
-                width: 44,
-                height: 44,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: canUndo ? 1 : 0.25,
-                marginRight: 6,
-              }}
-            >
-              <NativeGlassView
-                isInteractive={true}
-                glassEffectStyle="clear"
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 21,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <PlatformIcon name="undo" size={20} color="#FFFFFF" />
-              </NativeGlassView>
-            </PlatformPressable>
+              onPress={undo}
+            />
 
-            <PlatformPressable
-              onPress={() => setIsPickerOpen(true)}
-              activeOpacity={0.7}
-              style={{
-                width: 44,
-                height: 44,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <NativeGlassView
-                isInteractive={true}
-                glassEffectStyle="clear"
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 21,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <PlatformIcon name="grid" size={19} color="#FFFFFF" />
-              </NativeGlassView>
-            </PlatformPressable>
+            <NativeIconButton
+              action="grid"
+              size={44}
+              iconSize={20}
+              onPress={handleOpenOSPhotoPicker}
+            />
           </View>
 
           {/* Absolutely Centered: Filename & Date (outside card) */}
@@ -308,10 +337,10 @@ export default function SwipeScreen() {
                   })}
                   {currentAsset.mediaType === 'video' && currentAsset.duration > 0
                     ? ` • ${Math.floor(currentAsset.duration / 60)}:${Math.floor(
-                        currentAsset.duration % 60
-                      )
-                        .toString()
-                        .padStart(2, '0')}`
+                      currentAsset.duration % 60
+                    )
+                      .toString()
+                      .padStart(2, '0')}`
                     : ''}
                 </Text>
               </>
@@ -322,32 +351,16 @@ export default function SwipeScreen() {
             )}
           </View>
 
-          {/* iOS Right Item: Delete Counter Pill */}
+          {/* iOS Right Item: Native Trash Button with Badge */}
           <View style={{ zIndex: 10 }}>
-            {pendingDelete.length > 0 ? (
-              <PlatformPressable
-                onPress={handleOpenDeleteConfirmation}
-                activeOpacity={0.7}
-                style={{
-                  height: 42,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: 'rgba(255, 69, 58, 0.2)',
-                  borderColor: 'rgba(255, 69, 58, 0.5)',
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderRadius: 21,
-                  paddingHorizontal: 14,
-                }}
-              >
-                <PlatformIcon name="trash" size={15} color="#FF453A" style={{ marginRight: 5 }} />
-                <Text style={{ color: '#FF453A', fontSize: 14, fontWeight: '700' }}>
-                  {pendingDelete.length}
-                </Text>
-              </PlatformPressable>
-            ) : (
-              <View style={{ width: 44, height: 44 }} />
-            )}
+            <NativeIconButton
+              action="trash"
+              size={44}
+              iconSize={20}
+              badgeCount={pendingDelete.length}
+              disabled={pendingDelete.length === 0}
+              onPress={() => setIsReviewOpen(true)}
+            />
           </View>
         </View>
       ) : (
@@ -385,7 +398,7 @@ export default function SwipeScreen() {
             </PlatformPressable>
 
             <PlatformPressable
-              onPress={() => setIsPickerOpen(true)}
+              onPress={handleOpenOSPhotoPicker}
               rippleBorderless
               rippleColor="rgba(255, 255, 255, 0.15)"
               style={{
@@ -436,10 +449,10 @@ export default function SwipeScreen() {
                   })}
                   {currentAsset.mediaType === 'video' && currentAsset.duration > 0
                     ? ` • ${Math.floor(currentAsset.duration / 60)}:${Math.floor(
-                        currentAsset.duration % 60
-                      )
-                        .toString()
-                        .padStart(2, '0')}`
+                      currentAsset.duration % 60
+                    )
+                      .toString()
+                      .padStart(2, '0')}`
                     : ''}
                 </Text>
               </>
@@ -451,30 +464,14 @@ export default function SwipeScreen() {
           </View>
 
           <View style={{ zIndex: 10 }}>
-            {pendingDelete.length > 0 ? (
-              <PlatformPressable
-                onPress={handleOpenDeleteConfirmation}
-                rippleBorderless
-                rippleColor="rgba(255, 255, 255, 0.2)"
-                style={{
-                  height: 40,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: '#8C1D18',
-                  borderRadius: 20,
-                  paddingHorizontal: 14,
-                  elevation: 1,
-                }}
-              >
-                <PlatformIcon name="trash" size={16} color="#FFDAD6" style={{ marginRight: 6 }} />
-                <Text style={{ color: '#FFDAD6', fontSize: 13, fontWeight: '600' }}>
-                  {pendingDelete.length}
-                </Text>
-              </PlatformPressable>
-            ) : (
-              <View style={{ width: 44, height: 44 }} />
-            )}
+            <NativeIconButton
+              action="trash"
+              size={40}
+              iconSize={20}
+              badgeCount={pendingDelete.length}
+              disabled={pendingDelete.length === 0}
+              onPress={() => setIsReviewOpen(true)}
+            />
           </View>
         </View>
       )}
@@ -529,7 +526,7 @@ export default function SwipeScreen() {
                 role="destructive"
                 variant="destructive"
                 size="large"
-                onPress={handleOpenDeleteConfirmation}
+                onPress={() => setIsReviewOpen(true)}
                 style={{ width: '100%' }}
               />
             ) : (
@@ -596,18 +593,6 @@ export default function SwipeScreen() {
           setIsReviewOpen(false);
         }}
         isDeleting={isDeleting}
-      />
-
-      {/* Gallery / Jump-To Picker Modal */}
-      <GalleryPickerModal
-        visible={isPickerOpen}
-        assets={assets}
-        currentAssetId={currentAsset?.id}
-        onSelectAsset={jumpToAssetId}
-        onClose={() => setIsPickerOpen(false)}
-        onFetchMore={() => fetchNextPage(cursor)}
-        isFetchingMore={isFetchingMore}
-        hasNextPage={hasNextPage}
       />
 
       {/* App Opening Splash Screen */}

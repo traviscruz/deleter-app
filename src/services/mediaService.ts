@@ -1,5 +1,5 @@
-import * as MediaLibrary from 'expo-media-library/legacy';
-import { PermissionStatus } from 'expo';
+import * as MediaLibrary from 'expo-media-library';
+import { PermissionStatus } from 'expo-media-library';
 import { MediaAsset } from '@/types/media';
 
 export { PermissionStatus };
@@ -97,5 +97,29 @@ export async function deleteAssets(assetIds: string[]): Promise<boolean> {
     }
     console.warn('[MediaService] Failed to delete media assets:', msg);
     return false;
+  }
+}
+
+/**
+ * Fetches a single asset by its ID (useful when chosen via the OS Photo Picker).
+ */
+export async function getAssetById(assetId: string): Promise<MediaAsset | null> {
+  try {
+    const asset = await MediaLibrary.getAssetInfoAsync(assetId);
+    if (!asset) return null;
+    return {
+      id: asset.id,
+      uri: asset.uri,
+      mediaType: asset.mediaType,
+      duration: asset.duration || 0,
+      creationTime: asset.creationTime || Date.now(),
+      filename: asset.filename,
+      width: asset.width,
+      height: asset.height,
+      albumId: asset.albumId,
+    };
+  } catch (error) {
+    console.warn('[MediaService] Could not fetch asset by ID:', error);
+    return null;
   }
 }

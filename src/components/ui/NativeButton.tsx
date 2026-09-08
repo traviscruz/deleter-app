@@ -9,16 +9,22 @@ import {
 export interface NativeButtonProps {
   label?: string;
   systemImage?: any;
+  leadingIcon?: any;
   role?: 'default' | 'cancel' | 'destructive';
   onPress: () => void;
   disabled?: boolean;
-  variant?: 'primary' | 'destructive' | 'secondary' | 'tonal' | 'icon';
+  variant?: 'primary' | 'destructive' | 'secondary' | 'tonal' | 'icon' | 'glass';
   size?: 'small' | 'regular' | 'large';
   tintColor?: string;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }
 
+/**
+ * Universal Fallback NativeButton (used for web or non-native platforms).
+ * On iOS, Metro automatically resolves NativeButton.ios.tsx (@expo/ui/swift-ui).
+ * On Android, Metro automatically resolves NativeButton.android.tsx (@expo/ui/jetpack-compose).
+ */
 export function NativeButton({
   label,
   onPress,

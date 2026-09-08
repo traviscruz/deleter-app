@@ -1,64 +1,30 @@
 import React from 'react';
-import {
-  StyleProp,
-  ViewStyle,
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-} from 'react-native';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-
-const isExpoGo =
-  Constants.appOwnership === 'expo' ||
-  Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+import { View, Text, StyleProp, ViewStyle } from 'react-native';
+import { GlassView } from 'expo-glass-effect';
+import { SymbolView } from 'expo-symbols';
+import { getSwiftUI } from '@/services/nativeUI';
 
 export interface NativeButtonProps {
   label?: string;
-  systemImage?: string;
+  systemImage?: any;
+  leadingIcon?: any;
   role?: 'default' | 'cancel' | 'destructive';
   onPress: () => void;
   disabled?: boolean;
-  variant?: 'primary' | 'destructive' | 'secondary' | 'tonal' | 'icon';
+  variant?: 'primary' | 'destructive' | 'secondary' | 'tonal' | 'icon' | 'glass';
   size?: 'small' | 'regular' | 'large';
   tintColor?: string;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }
 
-// Map SF symbol name hints to Ionicons for iOS Expo Go runtime
-function getIOSIconName(systemImage?: string): keyof typeof Ionicons.glyphMap | null {
-  if (!systemImage) return null;
-  switch (systemImage) {
-    case 'trash':
-    case 'trash.fill':
-      return 'trash-outline';
-    case 'checkmark':
-    case 'checkmark.circle':
-      return 'checkmark';
-    case 'arrow.uturn.backward':
-    case 'arrow.counterclockwise':
-      return 'arrow-undo';
-    case 'sparkles':
-      return 'sparkles';
-    case 'lock':
-    case 'lock.fill':
-      return 'lock-closed-outline';
-    case 'play':
-    case 'play.fill':
-      return 'play';
-    case 'gear':
-    case 'gearshape':
-      return 'settings-outline';
-    default:
-      return null;
-  }
-}
-
+/**
+ * Native iOS Button:
+ * - Uses `@expo/ui/swift-ui` `Button` when running in a development build where ExpoUI is compiled.
+ * - Falls back to styled native button in Expo Go.
+ */
 export function NativeButton({
-  label,
+  label = '',
   systemImage,
   role = 'default',
   onPress,
@@ -69,141 +35,103 @@ export function NativeButton({
   style,
   children,
 }: NativeButtonProps) {
-  // If running in development build with native SwiftUI module compiled in
-  if (!isExpoGo) {
-    try {
-      const { Button } = require('@expo/ui/swift-ui');
-      const {
-        buttonStyle,
-        controlSize,
-        tint,
-        disabled: disabledModifier,
-      } = require('@expo/ui/swift-ui/modifiers');
+  const isDestructive = variant === 'destructive' || role === 'destructive';
+  const effectiveRole = isDestructive ? 'destructive' : role;
+  const swiftUI = getSwiftUI();
 
-      const modifiers: any[] = [];
+  if (swiftUI) {
+    const { ui, modifiers } = swiftUI;
+    const { Button } = ui;
+    const { buttonStyle, controlSize, tint, disabled: disabledModifier } = modifiers;
 
-      if (variant === 'destructive' || role === 'destructive') {
-        modifiers.push(buttonStyle('borderedProminent'));
-        modifiers.push(tint(tintColor || '#FF453A'));
-      } else if (variant === 'primary') {
-        modifiers.push(buttonStyle('borderedProminent'));
-        if (tintColor) {
-          modifiers.push(tint(tintColor));
-        }
-      } else if (variant === 'secondary' || variant === 'tonal') {
-        modifiers.push(buttonStyle('bordered'));
-        if (tintColor) {
-          modifiers.push(tint(tintColor));
-        }
-      } else if (variant === 'icon') {
-        modifiers.push(buttonStyle('borderless'));
-        if (tintColor) {
-          modifiers.push(tint(tintColor));
-        }
-      } else {
-        modifiers.push(buttonStyle('automatic'));
-      }
+    const modArray: any[] = [];
 
-      if (size === 'large') {
-        modifiers.push(controlSize('large'));
-      } else if (size === 'small') {
-        modifiers.push(controlSize('small'));
-      } else {
-        modifiers.push(controlSize('regular'));
-      }
-
-      if (disabled) {
-        modifiers.push(disabledModifier(true));
-      }
-
-      return (
-        <View style={style}>
-          <Button
-            label={label || ''}
-            systemImage={systemImage}
-            role={role}
-            onPress={onPress}
-            modifiers={modifiers}
-          />
-        </View>
-      );
-    } catch {
-      // Fallback if SwiftUI native view manager isn't available
+    if (variant === 'glass') {
+      modArray.push(buttonStyle('glass'));
+    } else if (variant === 'primary' || isDestructive) {
+      modArray.push(buttonStyle('borderedProminent'));
+    } else if (variant === 'secondary' || variant === 'tonal') {
+      modArray.push(buttonStyle('bordered'));
+    } else {
+      modArray.push(buttonStyle('automatic'));
     }
+
+    if (size === 'large') {
+      modArray.push(controlSize('large'));
+    } else if (size === 'small') {
+      modArray.push(controlSize('small'));
+    } else {
+      modArray.push(controlSize('regular'));
+    }
+
+    if (tintColor) {
+      modArray.push(tint(tintColor));
+    } else if (isDestructive) {
+      modArray.push(tint('#FF453A'));
+    }
+
+    if (disabled) {
+      modArray.push(disabledModifier(true));
+    }
+
+    return (
+      <View style={style}>
+        <Button
+          label={label}
+          systemImage={systemImage}
+          role={effectiveRole}
+          onPress={onPress}
+          modifiers={modArray}
+        />
+      </View>
+    );
   }
 
-  // Graceful iOS Native Fallback for Expo Go (using iOS Human Interface Design specs)
-  const isDestructive = variant === 'destructive' || role === 'destructive';
-  const isSecondary = variant === 'secondary' || variant === 'tonal';
-  const isIcon = variant === 'icon';
-
-  const defaultBg = isDestructive
-    ? tintColor || '#FF453A'
-    : isSecondary
-    ? 'rgba(255, 255, 255, 0.12)'
-    : isIcon
-    ? 'transparent'
-    : tintColor || '#0A84FF';
-
-  const textColor = isSecondary && !tintColor ? '#FFFFFF' : '#FFFFFF';
-  const iconName = getIOSIconName(systemImage);
-
-  const paddingVertical = size === 'large' ? 14 : size === 'small' ? 8 : 11;
-  const paddingHorizontal = size === 'large' ? 24 : size === 'small' ? 12 : 18;
-  const fontSize = size === 'large' ? 17 : size === 'small' ? 13 : 15;
-  const iconSize = size === 'large' ? 20 : size === 'small' ? 14 : 17;
-
-  const handlePress = () => {
-    if (disabled) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onPress();
-  };
+  // Fallback for Expo Go: Use Apple's native GlassView with SF Symbols
+  const effectiveColor = isDestructive
+    ? '#FF453A'
+    : tintColor || (variant === 'secondary' || variant === 'tonal' ? 'rgba(255, 255, 255, 0.8)' : '#30D158');
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.75}
-      onPress={handlePress}
-      disabled={disabled}
+    <GlassView
+      isInteractive={true}
+      glassEffectStyle={variant === 'glass' ? 'clear' : 'regular'}
+      tintColor={isDestructive ? 'rgba(255, 69, 58, 0.25)' : undefined}
+      onTouchEnd={disabled ? undefined : onPress}
       style={[
         {
-          backgroundColor: defaultBg,
-          borderRadius: 999,
-          paddingVertical,
-          paddingHorizontal,
-          flexDirection: 'row',
+          backgroundColor: isDestructive ? 'rgba(255, 69, 58, 0.2)' : undefined,
+          borderRadius: size === 'large' ? 16 : 12,
+          paddingVertical: size === 'large' ? 14 : 10,
+          paddingHorizontal: 20,
           alignItems: 'center',
           justifyContent: 'center',
-          opacity: disabled ? 0.4 : 1,
+          flexDirection: 'row',
+          opacity: disabled ? 0.35 : 1,
         },
-        isSecondary && {
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: 'rgba(255, 255, 255, 0.2)',
-        },
-        style,
+        style as ViewStyle,
       ]}
     >
-      {iconName && (
-        <Ionicons
-          name={iconName}
-          size={iconSize}
-          color={textColor}
-          style={label ? { marginRight: 6 } : undefined}
+      {systemImage && (
+        <SymbolView
+          name={systemImage}
+          size={size === 'large' ? 18 : 15}
+          tintColor={effectiveColor}
+          style={{ marginRight: label ? 6 : 0 }}
         />
       )}
-      {label && (
+      {children || (
         <Text
           style={{
-            color: textColor,
-            fontSize,
+            color: effectiveColor,
             fontWeight: '600',
-            letterSpacing: -0.2,
+            fontSize: size === 'large' ? 16 : 14,
           }}
         >
           {label}
         </Text>
       )}
-      {children}
-    </TouchableOpacity>
+    </GlassView>
   );
 }
 

@@ -30,9 +30,10 @@ interface DeleteConfirmSheetProps {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
-const GRID_SPACING = 8;
+const GRID_SPACING = 6;
 const HORIZONTAL_PADDING = 16;
-const ITEM_SIZE = (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - GRID_SPACING * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
+const ITEM_SIZE =
+  (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - GRID_SPACING * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
 
 export function DeleteConfirmSheet({
   visible,
@@ -59,14 +60,12 @@ export function DeleteConfirmSheet({
         style={{
           width: ITEM_SIZE,
           height: ITEM_SIZE,
-          borderRadius: 14,
+          borderRadius: 10,
           marginBottom: GRID_SPACING,
           marginRight: GRID_SPACING,
           overflow: 'hidden',
           backgroundColor: '#1c1c1e',
           position: 'relative',
-          borderWidth: 1.5,
-          borderColor: 'rgba(255, 69, 58, 0.4)',
         }}
       >
         <Image
@@ -81,19 +80,19 @@ export function DeleteConfirmSheet({
           <View
             style={{
               position: 'absolute',
-              bottom: 6,
-              left: 6,
-              backgroundColor: 'rgba(0, 0, 0, 0.75)',
-              borderRadius: 6,
-              paddingHorizontal: 5,
-              paddingVertical: 2,
+              bottom: 5,
+              left: 5,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              borderRadius: 4,
+              paddingHorizontal: 4,
+              paddingVertical: 1.5,
               flexDirection: 'row',
               alignItems: 'center',
             }}
           >
-            <PlatformIcon name="play" size={8} color="#FFFFFF" style={{ marginRight: 3 }} />
+            <PlatformIcon name="play" size={8} color="#FFFFFF" style={{ marginRight: 2 }} />
             {item.duration > 0 && (
-              <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '600' }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '600' }}>
                 {Math.floor(item.duration / 60)}:
                 {Math.floor(item.duration % 60)
                   .toString()
@@ -103,26 +102,21 @@ export function DeleteConfirmSheet({
           </View>
         )}
 
-        {/* Delete Tag Pill / Unmark Button */}
+        {/* Minimalist Unmark Button */}
         <View
           style={{
             position: 'absolute',
-            top: 6,
-            right: 6,
-            backgroundColor: '#FF453A',
-            width: 24,
-            height: 24,
-            borderRadius: 12,
+            top: 5,
+            right: 5,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            width: 20,
+            height: 20,
+            borderRadius: 10,
             alignItems: 'center',
             justifyContent: 'center',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.3,
-            shadowRadius: 3,
-            elevation: 3,
           }}
         >
-          <PlatformIcon name="trash" size={12} color="#FFFFFF" />
+          <PlatformIcon name="close" size={10} color="#FFFFFF" />
         </View>
       </PlatformPressable>
     );
@@ -144,24 +138,20 @@ export function DeleteConfirmSheet({
           ]}
         >
           {isIOS && (
-            <BlurView intensity={90} tint="systemMaterialDark" style={StyleSheet.absoluteFill} />
+            <BlurView intensity={85} tint="systemMaterialDark" style={StyleSheet.absoluteFill} />
           )}
 
-          {/* Material 3 Drag Handle on Android */}
-          {!isIOS && (
-            <View style={styles.androidDragHandle} />
-          )}
+          {/* Minimalist Drag Handle */}
+          <View style={styles.dragHandle} />
 
           {/* Sheet Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={[styles.headerTitle, !isIOS && { fontSize: 22, fontWeight: '500' }]}>
-                  Review Deletions
-                </Text>
+                <Text style={styles.headerTitle}>Review Deletions</Text>
                 {items.length > 0 && (
-                  <View style={[styles.countBadge, !isIOS && { backgroundColor: '#8C1D18', borderColor: '#FFB4AB' }]}>
-                    <Text style={[styles.countBadgeText, !isIOS && { color: '#FFDAD6' }]}>{items.length}</Text>
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{items.length}</Text>
                   </View>
                 )}
               </View>
@@ -173,11 +163,8 @@ export function DeleteConfirmSheet({
             </View>
 
             {/* Close Button */}
-            <PlatformPressable
-              onPress={onCancel}
-              style={[styles.closeButton, !isIOS && { backgroundColor: '#2B2930' }]}
-            >
-              <PlatformIcon name="close" size={18} color="#FFFFFF" />
+            <PlatformPressable onPress={onCancel} style={styles.closeButton}>
+              <PlatformIcon name="close" size={16} color="#FFFFFF" />
             </PlatformPressable>
           </View>
 
@@ -190,7 +177,7 @@ export function DeleteConfirmSheet({
               numColumns={COLUMN_COUNT}
               contentContainerStyle={{
                 paddingHorizontal: HORIZONTAL_PADDING,
-                paddingTop: 12,
+                paddingTop: 8,
                 paddingBottom: 24,
               }}
               showsVerticalScrollIndicator={false}
@@ -199,15 +186,15 @@ export function DeleteConfirmSheet({
             <View style={styles.emptyContainer}>
               <NativeGlassView
                 style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 32,
+                  width: 56,
+                  height: 56,
+                  borderRadius: 28,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginBottom: 16,
+                  marginBottom: 12,
                 }}
               >
-                <PlatformIcon name="sparkles" size={28} color="#30D158" />
+                <PlatformIcon name="sparkles" size={24} color="#30D158" />
               </NativeGlassView>
               <Text style={styles.emptyTitle}>No Items Marked</Text>
               <Text style={styles.emptySubtitle}>
@@ -216,7 +203,7 @@ export function DeleteConfirmSheet({
             </View>
           )}
 
-          {/* Bottom Action Bar extending all the way to screen bottom edge */}
+          {/* Bottom Action Bar */}
           <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom + 8, 20) }]}>
             {items.length > 0 ? (
               <PlatformPressable
@@ -228,7 +215,7 @@ export function DeleteConfirmSheet({
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
                   <>
-                    <PlatformIcon name="trash" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                    <PlatformIcon name="trash" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
                     <Text style={styles.deleteButtonText}>
                       Delete {items.length} {items.length === 1 ? 'Item' : 'Items'}
                     </Text>
@@ -240,7 +227,7 @@ export function DeleteConfirmSheet({
                 onPress={onCancel}
                 style={[styles.deleteButton, { backgroundColor: '#30D158' }]}
               >
-                <PlatformIcon name="check" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <PlatformIcon name="check" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
                 <Text style={styles.deleteButtonText}>Done</Text>
               </PlatformPressable>
             )}
@@ -264,25 +251,25 @@ export function DeleteConfirmSheet({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'flex-end',
   },
   sheetContainer: {
     flex: 1,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     overflow: 'hidden',
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(24, 24, 27, 0.94)' : '#1E1F24',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(18, 18, 20, 0.95)' : '#141218',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  androidDragHandle: {
-    width: 36,
+  dragHandle: {
+    width: 32,
     height: 4,
-    backgroundColor: '#79747E',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     borderRadius: 2,
     alignSelf: 'center',
-    marginTop: 12,
+    marginTop: 8,
     marginBottom: 4,
   },
   header: {
@@ -290,42 +277,38 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 12,
     paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   headerTitle: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
   },
   countBadge: {
-    backgroundColor: 'rgba(255, 69, 58, 0.25)',
-    borderColor: 'rgba(255, 69, 58, 0.6)',
-    borderWidth: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
     marginLeft: 8,
   },
   countBadgeText: {
-    color: '#FF453A',
+    color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   headerSubtitle: {
-    color: 'rgba(235, 235, 245, 0.65)',
+    color: 'rgba(235, 235, 245, 0.6)',
     fontSize: 13,
-    marginTop: 4,
+    marginTop: 3,
     lineHeight: 18,
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 12,
@@ -338,51 +321,46 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     marginBottom: 6,
   },
   emptySubtitle: {
-    color: 'rgba(235, 235, 245, 0.6)',
-    fontSize: 14,
+    color: 'rgba(235, 235, 245, 0.55)',
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 18,
   },
   bottomBar: {
     paddingHorizontal: 20,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(24, 24, 27, 0.7)' : '#1E1F24',
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(18, 18, 20, 0.6)' : '#141218',
   },
   deleteButton: {
     backgroundColor: '#FF453A',
-    borderRadius: 16,
-    paddingVertical: 15,
+    borderRadius: 14,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    shadowColor: '#FF453A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 4,
   },
   deleteButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
     letterSpacing: -0.2,
   },
   keepAllButton: {
-    marginTop: 10,
-    paddingVertical: 10,
+    marginTop: 8,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   keepAllButtonText: {
-    color: 'rgba(235, 235, 245, 0.6)',
+    color: 'rgba(235, 235, 245, 0.55)',
     fontSize: 14,
     fontWeight: '500',
   },
