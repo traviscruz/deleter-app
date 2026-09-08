@@ -1,0 +1,35 @@
+workflows:
+  unsigned-ios:
+    name: Unsigned iOS Build
+    max_build_duration: 60
+    environment:
+      xcode: latest
+      node: latest
+      vars:
+        XCODE_WORKSPACE: "ios/YourApp.xcworkspace"
+        XCODE_SCHEME: "YourApp"
+    scripts:
+      - name: Install npm packages
+        script: npm install
+      - name: Prebuild iOS project
+        script: npx expo prebuild --platform ios
+      - name: Install pods
+        script: cd ios && pod install
+      - name: Archive without signing
+        script: |
+          xcodebuild archive \
+            -workspace $XCODE_WORKSPACE \
+            -scheme $XCODE_SCHEME \
+            -configuration Release \
+            -archivePath build/YourApp.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+      - name: Package unsigned IPA
+        script: |
+          mkdir -p build/Payload
+          cp -r build/YourApp.xcarchive/Products/Applications/*.app build/Payload/
+          cd build && zip -r YourApp.ipa Payload
+    artifacts:
+      - build/*.ipa
